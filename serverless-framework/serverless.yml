@@ -1,0 +1,72 @@
+service: to-dont
+
+plugins:
+  # Add a plugin that allows us to specify more fine grained IAM policies
+  - serverless-iam-roles-per-function
+
+# require serverless v3
+frameworkVersion: '3'
+
+provider:
+  name: aws
+  # default config for all functions
+  runtime: nodejs16.x
+  region: eu-north-1
+
+functions:
+  persist:
+    handler: src/persist.handler
+    # Set an environment variable with the DynamoDB table name,
+    # based on the reference to the table in the CloudFormation 
+    # Resources block below
+    environment:
+      TABLE_NAME: !Ref DynamoTable
+    # Expose the function for POST requests on /item in an ApiGateway
+    events:
+      - http:
+          path: /item
+          method: post
+    # Allow the function to write to our DynamoDB table
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - dynamodb:PutItem
+        Resource:
+          - !GetAtt DynamoTable.Arn
+  fanout:
+    handler: src/fanout.handler
+    # Set an environment variable with the SNS topic ARN
+    environment:
+      TOPIC_ARN: !Ref SnsTopic
+    # Trigger the function when a new item is added to the DynamoDB
+    # table by listening to the DynamoDB stream
+    events:
+      - stream:
+          type: dynamodb
+          arn:
+            !GetAtt DynamoTable.StreamArn
+    iamRoleStatements:
+      - Effect: Allow
+        Action:
+          - sns:Publish
+        Resource:
+          - !Ref SnsTopic
+
+# DynamoDB tables and SNS Topics has to be set up in CloudFormation,
+# and the Resources block below allows us to do just that
+resources:
+  Resources:
+    DynamoTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: pk
+            AttributeType: S
+        KeySchema:
+          - AttributeName: pk
+            KeyType: HASH
+        StreamSpecification:
+          StreamViewType: NEW_AND_OLD_IMAGES
+    SnsTopic:
+      Type: AWS::SNS::Topic

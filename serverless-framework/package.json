@@ -1,0 +1,9 @@
+{
+  "name": "serverless-framework",
+  "version": "1.0.0",
+  "main": "index.js",
+  "devDependencies": {
+    "serverless": "^3.18.2",
+    "serverless-iam-roles-per-function": "^3.2.0"
+  }
+}

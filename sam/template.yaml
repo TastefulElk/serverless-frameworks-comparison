@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  to-dont
+
+Transform: AWS::Serverless-2016-10-31
+
+# Default Lambda function config
+Globals:
+  Function:
+    Timeout: 10
+    MemorySize: 512
+    Runtime: nodejs16.x
+
+Resources:
+  persistFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/persist.handler
+      # Set an environment variable with the DynamoDB table name, 
+      # based on the reference to the table defined below
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref DynamoTable
+      Policies:
+        # Give Create/Read/Update/Delete Permissions to the DynamoDB table
+        - DynamoDBCrudPolicy:
+            TableName: !Ref DynamoTable
+      # Expose the function for POST requests on /item in an ApiGateway
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /item
+            Method: POST
+  fanoutFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: src/fanout.handler
+      # Set an environment variable with the SNS topic ARN
+      Environment:
+        Variables:
+          TOPIC_ARN: !Ref SnsTopic
+      # Give the function permission to publish to the SNS topic
+      Policies:
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt SnsTopic.TopicName
+      # Trigger the function when a new item is added to the DynamoDB
+      # table by listening to the DynamoDB stream
+      Events:
+        Stream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt DynamoTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+
+  DynamoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+  SnsTopic:
+    Type: AWS::SNS::Topic
+
+Outputs:
+  WebEndpoint:
+    Description: "API Gateway endpoint URL for Prod stage"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
