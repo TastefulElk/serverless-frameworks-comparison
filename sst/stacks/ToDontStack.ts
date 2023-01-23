@@ -20,6 +20,8 @@ export function ToDontStack({ stack }: StackContext) {
       fanout: {
         function: {
           handler: "functions/fanout.handler",
+          // bind the SNS Topic to the function so we can access it
+          // typesafely from the Lambda function instead of env vars
           bind: [topic],
         },
       }
